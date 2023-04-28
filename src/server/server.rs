@@ -15,14 +15,15 @@ pub fn main() {
     println!("Connected to {}", addr);
 
     // 클라이언트로부터의 메시지 수신 및 출력
-    let mut buffer = [0; 512];
-    stream.read(&mut buffer).unwrap();
-    println!("{}", String::from_utf8_lossy(&buffer));
+    loop {
+        let mut buffer = [0; 512];
+        stream.read(&mut buffer).unwrap();
+        println!("server get msg : {}", String::from_utf8_lossy(&buffer));
 
-    // 메시지에 대한 응답을 클라이언트에게 전송
-    let response = "Hello from server!";
-    stream.write(response.as_bytes()).unwrap();
-
+        // 메시지에 대한 응답을 클라이언트에게 전송
+        let response = "Hello from server!";
+        stream.write(response.as_bytes()).unwrap();
+    }
     // 연결 종료
     stream.shutdown(std::net::Shutdown::Both).unwrap();
 }
