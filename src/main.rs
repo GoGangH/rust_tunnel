@@ -1,22 +1,15 @@
 mod client;
 mod server;
 
-use tokio::join;
-
-#[tokio::main]
-async fn main() -> std::io::Result<()> {
-    let server_handle = tokio::spawn(async move {
-        if let Err(e) = server::main().await {
-            eprintln!("server error: {:?}", e);
-        }
-    });
-    let client_handle = tokio::spawn(async move {
-        if let Err(e) = client::main().await {
-            eprintln!("client error: {:?}", e);
-        }
+fn main() {
+    // 새로운 thread에서 서버 실행
+    let server_handle = std::thread::spawn(|| {
+        server::server::main();
     });
 
-    join!(server_handle, client_handle);
+    // 클라이언트 실행
+    client::client::main();
 
-    Ok(())
+    // 서버 thread 종료 대기
+    server_handle.join().unwrap();
 }
