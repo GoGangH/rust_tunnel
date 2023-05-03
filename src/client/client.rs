@@ -55,29 +55,27 @@ fn create_tunnels(num_tunnels: usize, server_addr: &str) -> Vec<Arc<Mutex<Tunnel
     tunnels
 }
 
-fn send_message(tunnels: &Vec<Arc<Mutex<Tunnel>>>, message: &str, tunnel_num: i32) {
-    for tunnel in tunnels {
-        let mut locked_tunnel_guard = tunnel.lock().unwrap();
-        let locked_tunnel = &mut *locked_tunnel_guard;
-        if locked_tunnel.stream.peer_addr().is_ok() {
-            println!("Sending message through tunnel {}", locked_tunnel.id);
-            locked_tunnel
-                .stream
-                .write_all(message.as_bytes())
-                .expect("failed to send message");
-            return;
-        }
+fn send_message(tunnel: &Arc<Mutex<Tunnel>>, message: &str) {
+    let mut locked_tunnel_guard = tunnel.lock().unwrap();
+    let locked_tunnel = &mut *locked_tunnel_guard;
+    if locked_tunnel.stream.peer_addr().is_ok() {
+        println!("Sending message through tunnel {}", locked_tunnel.id);
+        locked_tunnel
+            .stream
+            .write_all(message.as_bytes())
+            .expect("failed to send message");
+        return;
     }
     println!("All tunnels are busy");
 }
 
 pub fn main() {
     // 클라이언트가 접속할 서버의 IP 주소와 포트 번호
-    let server_addr = "127.0.0.1:8080";
+    let server_addr = "127.0.0.1:8080"; //server 포트
     let num_tunnels = 3;
     let tunnel_vec = create_tunnels(num_tunnels, server_addr);
+    // db의 주소에 따라 tunnel 라우팅
     let mut route = HashMap::new();
-
     route.insert(String::from("127.0.0.1:8000"), 0);
     route.insert(String::from("127.0.0.1:8001"), 1);
     route.insert(String::from("127.0.0.1:8002"), 2);
@@ -90,11 +88,13 @@ pub fn main() {
             println!("connect out!");
             break;
         }
-        let mut port = String::from(&input.trim()[0..14]);
-        for i in route.get(&port) {
-            send_message(&tunnel_vec, input.trim(), *i);
-        }
+        let tunnel_num = route.get(&input.trim()[0..14]).unwrap();
+
+        let message = format!("{} {}", tunnel_num.to_string(), input[14..].trim());
+
+        send_message(&tunnel_vec[*tunnel_num as usize], &message);
     }
+
     // 연결 종료
     println!("Closing tunnels...");
     for tunnel in tunnel_vec {
