@@ -1,40 +1,87 @@
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream};
-use std::thread;
+use std::sync::{Arc, Mutex};
+
+struct Tunnel {
+    id: usize,
+    stream: TcpStream,
+}
+
+impl Tunnel {
+    fn new(id: usize, stream: TcpStream) -> Tunnel {
+        Tunnel { id, stream }
+    }
+
+    fn run(&mut self) {
+        loop {
+            let mut buffer = [0; 1024];
+            match self.stream.read(&mut buffer) {
+                Ok(n) => {
+                    if n == 0 {
+                        println!("Connection closed for tunnel {}", self.id);
+                        break;
+                    }
+                    let received_message = std::str::from_utf8(&buffer[0..n]).unwrap();
+                    println!(
+                        "Received message in tunnel {}: {}",
+                        self.id, received_message
+                    );
+                }
+                Err(err) => {
+                    println!("Failed to read from tunnel {}: {}", self.id, err);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+fn create_tunnels(num_tunnels: usize, server_addr: &str) -> Vec<Arc<Mutex<Tunnel>>> {
+    let mut tunnels = Vec::new();
+    for i in 0..num_tunnels {
+        let stream = TcpStream::connect(server_addr).expect("connection failed");
+        stream
+            .set_nonblocking(true)
+            .expect("failed to set non-blocking");
+        let tunnel = Arc::new(Mutex::new(Tunnel::new(i, stream)));
+        let tunnel_clone = tunnel.clone();
+        std::thread::spawn(move || {
+            let mut locked_tunnel = tunnel_clone.lock().unwrap();
+            locked_tunnel.run();
+        });
+        tunnels.push(tunnel);
+    }
+    tunnels
+}
+
+fn send_message(tunnels: &Vec<Arc<Mutex<Tunnel>>>, message: &str, tunnel_num: i32) {
+    for tunnel in tunnels {
+        let mut locked_tunnel_guard = tunnel.lock().unwrap();
+        let locked_tunnel = &mut *locked_tunnel_guard;
+        if locked_tunnel.stream.peer_addr().is_ok() {
+            println!("Sending message through tunnel {}", locked_tunnel.id);
+            locked_tunnel
+                .stream
+                .write_all(message.as_bytes())
+                .expect("failed to send message");
+            return;
+        }
+    }
+    println!("All tunnels are busy");
+}
+
 pub fn main() {
     // 클라이언트가 접속할 서버의 IP 주소와 포트 번호
     let server_addr = "127.0.0.1:8080";
     let num_tunnels = 3;
-    // let mut tunnel_vec = create_tunnels(num_tunnels, server_addr);
+    let tunnel_vec = create_tunnels(num_tunnels, server_addr);
+    let mut route = HashMap::new();
 
-    for i in 0..num_tunnels {
-        // 클라이언트는 서버로의 연결을 시도
-        let mut stream = TcpStream::connect(server_addr).expect("connection failed");
+    route.insert(String::from("127.0.0.1:8000"), 0);
+    route.insert(String::from("127.0.0.1:8001"), 1);
+    route.insert(String::from("127.0.0.1:8002"), 2);
 
-        // 서버에게 터널 ID를 보냄
-        let tunnel_id = format!("Tunnel-{}", i);
-        stream.write(tunnel_id.as_bytes()).unwrap();
-
-        // 새로운 스레드에서 터널로부터 메시지 수신
-        let mut tunnel = stream.try_clone().unwrap();
-        thread::spawn(move || {
-            loop {
-                let mut buffer = [0; 512];
-                match tunnel.read(&mut buffer) {
-                    Ok(n) if n > 0 => {
-                        println!(
-                            "Received from tunnel {}: {}",
-                            tunnel_id,
-                            String::from_utf8_lossy(&buffer[..n])
-                        );
-                    }
-                    Ok(_) | Err(_) => break,
-                }
-            }
-            println!("Tunnel {} closed", tunnel_id);
-        });
-    }
-    //메인 스레드에서 사용자 입력을 받아서 터널로 전송
     loop {
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
@@ -43,23 +90,21 @@ pub fn main() {
             println!("connect out!");
             break;
         }
-
-        // 모든 터널로 메시지 전송
-        for i in 0..num_tunnels {
-            let tunnel_id = format!("Tunnel-{}", i);
-            let msg = format!("[{}] {}", tunnel_id, input.trim());
-            let mut tunnel = TcpStream::connect(server_addr).unwrap(); // 새로운 연결 생성
-            tunnel.write(msg.as_bytes()).unwrap();
+        let mut port = String::from(&input.trim()[0..14]);
+        for i in route.get(&port) {
+            send_message(&tunnel_vec, input.trim(), *i);
         }
     }
     // 연결 종료
     println!("Closing tunnels...");
-    for i in 0..num_tunnels {
-        let tunnel_id = format!("Tunnel-{}", i);
-        let mut tunnel = TcpStream::connect(server_addr).unwrap(); // 새로운 연결 생성
-        tunnel
+    for tunnel in tunnel_vec {
+        let mut locked_tunnel_guard = tunnel.lock().unwrap();
+        let locked_tunnel = &mut *locked_tunnel_guard;
+        let tunnel_id = format!("Tunnel-{}", locked_tunnel.id);
+        locked_tunnel
+            .stream
             .write(format!("{} exit()", tunnel_id).as_bytes())
             .unwrap();
-        tunnel.shutdown(Shutdown::Both).unwrap();
+        locked_tunnel.stream.shutdown(Shutdown::Both).unwrap();
     }
 }
