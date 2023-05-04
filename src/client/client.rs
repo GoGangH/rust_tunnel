@@ -1,3 +1,4 @@
+use arrayref::array_ref;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream};
@@ -12,8 +13,11 @@ impl Tunnel {
     fn new(id: usize, stream: TcpStream) -> Tunnel {
         Tunnel { id, stream }
     }
-
     fn run(&mut self) {
+        // id 값 server에 보내기
+        let id_bytes = self.id.to_be_bytes();
+        self.stream.write(&id_bytes).unwrap();
+
         loop {
             let mut buffer = [0; 1024];
             match self.stream.read(&mut buffer) {
@@ -41,9 +45,9 @@ fn create_tunnels(num_tunnels: usize, server_addr: &str) -> Vec<Arc<Mutex<Tunnel
     let mut tunnels = Vec::new();
     for i in 0..num_tunnels {
         let stream = TcpStream::connect(server_addr).expect("connection failed");
-        stream
-            .set_nonblocking(true)
-            .expect("failed to set non-blocking");
+        // stream
+        //     .set_nonblocking(true)
+        //     .expect("failed to set non-blocking");
         let tunnel = Arc::new(Mutex::new(Tunnel::new(i, stream)));
         let tunnel_clone = tunnel.clone();
         std::thread::spawn(move || {
@@ -55,20 +59,6 @@ fn create_tunnels(num_tunnels: usize, server_addr: &str) -> Vec<Arc<Mutex<Tunnel
     tunnels
 }
 
-fn send_message(tunnel: &Arc<Mutex<Tunnel>>, message: &str) {
-    let mut locked_tunnel_guard = tunnel.lock().unwrap();
-    let locked_tunnel = &mut *locked_tunnel_guard;
-    if locked_tunnel.stream.peer_addr().is_ok() {
-        println!("Sending message through tunnel {}", locked_tunnel.id);
-        locked_tunnel
-            .stream
-            .write_all(message.as_bytes())
-            .expect("failed to send message");
-        return;
-    }
-    println!("All tunnels are busy");
-}
-
 pub fn main() {
     // 클라이언트가 접속할 서버의 IP 주소와 포트 번호
     let server_addr = "127.0.0.1:8080"; //server 포트
@@ -76,10 +66,12 @@ pub fn main() {
     let tunnel_vec = create_tunnels(num_tunnels, server_addr);
     // db의 주소에 따라 tunnel 라우팅
     let mut route = HashMap::new();
-    route.insert(String::from("127.0.0.1:8000"), 0);
-    route.insert(String::from("127.0.0.1:8001"), 1);
-    route.insert(String::from("127.0.0.1:8002"), 2);
 
+    route.insert(0, String::from("3000"));
+    route.insert(1, String::from("4000"));
+    route.insert(2, String::from("5000"));
+
+    //입력 받는 로직 넣을것
     loop {
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
@@ -88,11 +80,6 @@ pub fn main() {
             println!("connect out!");
             break;
         }
-        let tunnel_num = route.get(&input.trim()[0..14]).unwrap();
-
-        let message = format!("{} {}", tunnel_num.to_string(), input[14..].trim());
-
-        send_message(&tunnel_vec[*tunnel_num as usize], &message);
     }
 
     // 연결 종료
