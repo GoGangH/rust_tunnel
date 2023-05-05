@@ -1,3 +1,8 @@
+JSch는 reverse tunnel을 구현할수 있게 해주는 java라이브러리이다.
+
+## 자바에 적용하는 방법
+## 코드별 주석 작성 필요
+
 The current JSch has the following features.
 
 JSch is in pure Java, but it depends on JavaTM Cryptography Extension (JCE). JSch has been known to work with:
