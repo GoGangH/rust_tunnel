@@ -56,21 +56,36 @@ class localUserInfo implements UserInfo {
 
     public boolean promptYesNo(String str) {
         return true;
+        // 예-아니오 질문에 대답하라는 메시지를 표시한다.-
     }
 
     public String getPassphrase() {
         return null;
+        // 사용자가 입력한 암호를 반환한다.
     }
+
 
     public boolean promptPassphrase(String message) {
         return true;
+        //  사용자에게 공개 키의 암호를 묻는 메시지를 표시합니다.
     }
 
     public boolean promptPassword(String message) {
         return true;
+        //사용자에게 공개키의 암호를 묻는 메시지
     }
 
     public void showMessage(String message) {
+        // 사용자에게 정보 메시지를 표시
     }
 }
 ```
+
+````java
+localUserInfo lui = new localUserInfo(); // local user 설정
+        session.setUserInfo(lui);
+        session.connect();
+        session.setPortForwardingL(tunnelLocalPort, tunnelRemoteHost, tunnelRemotePort);
+        System.out.println("C
+        ```
+````
